@@ -40,8 +40,8 @@ class OllamaToolManager:
         """
         Register a function as a tool.
         """
-        properties = inputSchema["properties"]
-        required = inputSchema["required"]
+        properties = inputSchema["properties"] if "properties" in inputSchema else {}
+        required = inputSchema["required"] if "required" in inputSchema else []
         tool = OllamaTool(name, function, description, properties, required)
         self.tools[name] = tool
 

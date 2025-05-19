@@ -1,5 +1,6 @@
 from typing import Literal, TypedDict
 import ollama
+from mcpclient import MCPClient
 from ollama_toolmanager import OllamaToolManager
 from mcp.types import CallToolResult
 
@@ -9,12 +10,26 @@ class OllamaAgent:
         self,
         model: str,
         tool_manager: OllamaToolManager,
-        default_prompt="You are a helpful assistant who can use available tools to solve problems",
+        system_prompt="You are a helpful assistant who can use available tools to solve problems. You have a memory to take notes and recall information. ",
     ) -> None:
         self.model = model
-        self.default_prompt = default_prompt
-        self.messages: list[ollama.Message] = []
+        self.system_prompt = system_prompt
+
+        self.messages: list[ollama.Message] = [
+            ollama.Message(role="system", content=self.system_prompt)
+        ]
         self.tool_manager = tool_manager
+
+    async def add_tools(self, client: MCPClient):
+        tools_list = await client.get_available_tools()
+        for tool in tools_list:
+            print(f"Registering tool: {tool.name}")
+            self.tool_manager.register_tool(
+                name=tool.name,
+                function=client.call_tool,
+                description=tool.description or "",
+                inputSchema=tool.inputSchema,
+            )
 
     async def get_response(self, content: str) -> str:
         self.messages.append(ollama.Message(role="user", content=content))
