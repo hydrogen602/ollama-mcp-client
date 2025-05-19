@@ -4,11 +4,6 @@ from ollama_toolmanager import OllamaToolManager
 from mcp.types import CallToolResult
 
 
-class Message(TypedDict):
-    role: Literal["user", "assistant", "tool"]
-    content: str
-
-
 class OllamaAgent:
     def __init__(
         self,
@@ -18,44 +13,66 @@ class OllamaAgent:
     ) -> None:
         self.model = model
         self.default_prompt = default_prompt
-        self.messages: list[Message] = []
+        self.messages: list[ollama.Message] = []
         self.tool_manager = tool_manager
 
     async def get_response(self, content: str) -> str:
-        self.messages.append({"role": "user", "content": content})
+        self.messages.append(ollama.Message(role="user", content=content))
 
-        query = ollama.chat(
-            model=self.model,
-            messages=self.messages,
-            tools=self.tool_manager.get_tools(),
+        run_idx = 0
+        while run_idx < 5:  # Limit iterations to prevent infinite loops
+            run_idx += 1
+            query = ollama.chat(
+                model=self.model,
+                messages=self.messages,
+                tools=self.tool_manager.get_tools(),
+            )
+
+            tools_ran = await self.handle_response(query)
+            if not tools_ran:
+                break
+
+        return "\n".join(
+            f"> {e.content}" or "" for e in self.messages if e.role == "assistant"
         )
 
-        return await self.handle_response(query)
+    async def handle_response(self, response: ollama.ChatResponse):
+        """
+        Returns true if tool calls were executed & messages updated.
+        """
+        if response.message.role == "assistant" and response.message.content:
+            self.messages.append(
+                ollama.Message(role="assistant", content=response.message.content)
+            )
 
-    async def handle_response(self, response: ollama.ChatResponse) -> str:
         try:
             tool_calls = response.message.tool_calls
-            self.messages.append({"role": "tool", "content": str(response)})
 
             if not tool_calls:
-                return ""
+                return False
 
-            results: list[CallToolResult] = []
             for tool_call in tool_calls:
-                results.append(await self.tool_manager.execute_tool(tool_call))
-
-            tool_response = []
-            for result in results:
+                result = await self.tool_manager.execute_tool(tool_call)
+                text_result = ""
                 for content in result.content:
-                    if not hasattr(content, "text"):
+                    if hasattr(content, "text"):
+                        text_result += (
+                            content.text  # pyright: ignore[reportAttributeAccessIssue] - we just checked this
+                        )
+                    else:
                         raise NotImplementedError(
                             "Tool response content does not have 'text' attribute"
                         )
-                    tool_response.append(
-                        content.text  # pyright: ignore[reportAttributeAccessIssue] - we just checked this
-                    )
 
-            return "".join(tool_response)
+                self.messages.append(ollama.Message(role="tool", content=text_result))
+
+            return True
+
         except Exception as e:
-            print(e)
-            return f'Function calling failed with error: "{e}"'
+            print("Error", type(e).__name__, e)
+            self.messages.append(
+                ollama.Message(
+                    role="tool", content=f"Error: {type(e).__name__}: {str(e)}"
+                )
+            )
+            return True

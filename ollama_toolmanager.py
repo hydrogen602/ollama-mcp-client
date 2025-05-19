@@ -49,20 +49,18 @@ class OllamaToolManager:
         """
         Generate the tools specification.
         """
-        tool_specs: list[FunctionInfo] = []
-        for name, tool in self.tools.items():
-            tool_specs.append(
-                {
-                    "type": "function",
-                    "function": {
-                        "name": name,
-                        "description": tool.description,
-                        "properties": tool.properties,
-                        "required": tool.required,
-                    },
-                }
-            )
-        return tool_specs
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": name,
+                    "description": tool.description,
+                    "properties": tool.properties,
+                    "required": tool.required,
+                },
+            }
+            for name, tool in self.tools.items()
+        ]
 
     async def execute_tool(self, payload: ollama.Message.ToolCall) -> CallToolResult:
         """
@@ -76,8 +74,7 @@ class OllamaToolManager:
             raise ValueError(f"Unknown tool: {name}")
         try:
             tool_func = self.tools[name].function
-            print("Tool =", name)
-            print("Tool input =", tool_input)
+            print(f"Tool call: {name}({tool_input})")
             return await tool_func(name, tool_input)
         except Exception as e:
             result = TextContent(type="text", text=f"Error executing tool: {str(e)}")

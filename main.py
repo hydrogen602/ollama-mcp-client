@@ -25,13 +25,8 @@ async def main(user_prompt: str = "get weather for texas"):
                 description=tool.description or "",
                 inputSchema=tool.inputSchema,
             )
-        print("Tools registered successfully.")
 
-        try:
-            res = await agent.get_response(user_prompt)
-            print(res)
-        except Exception as e:
-            print(f"\nError occurred: {e}")
+        print(await agent.get_response(user_prompt))
 
 
 if __name__ == "__main__":
